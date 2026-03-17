@@ -11,7 +11,7 @@ name        = "SNOBOL4python"
 version     = "0.5.2"
 description = "SNOBOL4 string pattern matching for Python — dual-backend (pure-Python and C/SPIPAT)."
 readme      = "README.md"
-license = { text = "GPL-3.0-or-later" }
+license = { text = "LGPL-3.0-or-later" }
 requires-python = ">=3.10"
 authors     = [{ name = "Lon Jones Cherryholmes", email = "lcherryh@yahoo.com" }]
 

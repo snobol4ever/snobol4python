@@ -1,4 +1,5 @@
 # SNOBOL4python 0.5.0
+[![License: LGPL v3](https://img.shields.io/badge/License-LGPL_v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
 
 SNOBOL4-style string pattern matching for Python — with a dual backend:
 
