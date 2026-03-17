@@ -8,7 +8,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [0.5.1] — 2026-03-10
 
 ### Changed
-- Project URLs updated to canonical home at https://github.com/SNOBOL4-plus/SNOBOL4-python
+- Project URLs updated to canonical home at https://github.com/snobol4ever/snobol4python
 
 ---
 
