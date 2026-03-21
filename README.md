@@ -1,174 +1,189 @@
-# SNOBOL4python 0.5.0
-[![License: LGPL v3](https://img.shields.io/badge/License-LGPL_v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
+# snobol4python
 
-SNOBOL4-style string pattern matching for Python — with a dual backend:
+**SNOBOL4 pattern matching for Python — on PyPI**
 
-| Backend | Speed | Availability |
-|---------|-------|--------------|
-| **C / SPIPAT** (default) | 7–11× faster than 0.4.x | CPython 3.10+ with GCC |
-| **Pure Python** | 100 % portable | Any Python ≥ 3.10 |
+[![License: LGPL v3](https://img.shields.io/badge/License-LGPL%20v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
+[![PyPI version](https://img.shields.io/badge/pypi-v0.5.0-blue)](https://pypi.org/project/SNOBOL4python/)
 
-The C backend is powered by [Phil Budne's SPIPAT](https://github.com/pbudne/spipat) pattern engine, wrapped as a CPython extension (`sno4py`).
+> *Part of the [snobol4ever](https://github.com/snobol4ever) project — SNOBOL4 everywhere, on every platform.*
+
+---
+
+## What This Is
+
+snobol4python brings the full SNOBOL4 pattern vocabulary to Python as a first-class library. Not a regex wrapper. Not a translation layer. The real SNOBOL4 pattern engine — composable, backtracking, recursive — available as Python objects you build, store, pass to functions, and combine at runtime.
+
+SNOBOL4 patterns are values. They compose. They backtrack. They capture intermediate results. They reference themselves recursively. They can express BNF grammars directly — something regular expressions cannot do. A SNOBOL4 pattern is not a string. It is not syntax. It is a data structure that encodes a computation.
+
+```bash
+pip install SNOBOL4python
+```
 
 ---
 
 ## Quick Start
 
 ```python
-from SNOBOL4python import *
+from snobol4 import *
 
-GLOBALS(globals())
+# Match a simple pattern
+subject = "Hello, World"
+pat = LIT("Hello") + SPAN(",! ") + REM
 
-p = σ("hello") | σ("world")
-if "say hello" in p:
-    print("matched")
+result = match(subject, pat)
+# → matched: "Hello, World"
 
-result = SEARCH("say hello", σ("hello"))   # → slice(4, 9)
+# Capture with immediate assign
+name = SV()
+pat = LIT("Hello, ") + REM $ name
+match("Hello, World", pat)
+# name.value → "World"
+
+# Compose patterns — SNOBOL4's superpower
+digit = ANY("0123456789")
+digits = digit + ARBNO(digit)
+integer = FENCE(digits)  # no backtracking past this point
+
+# Recursive grammar — impossible in regex
+open_p  = LIT("(")
+close_p = LIT(")")
+balanced = DEFERRED(lambda: open_p + ARBNO(balanced | ANY("abc")) + close_p)
+match("(a(b)c)", balanced)  # ✅
 ```
 
 ---
 
-## Backend Selection
+## The Pattern Vocabulary
 
-### Automatic (default)
+Full SNOBOL4/SPITBOL primitive set:
 
-On import, SNOBOL4python checks whether the `sno4py` C extension is
-importable.  If it is, the C/SPIPAT backend is used; otherwise the
-pure-Python backend is used transparently — no code changes required.
+| Primitive | Matches |
+|-----------|---------|
+| `LIT(s)` | Literal string `s` |
+| `ANY(s)` | Any single character in `s` |
+| `NOTANY(s)` | Any single character not in `s` |
+| `SPAN(s)` | Longest run of characters in `s` |
+| `BREAK(s)` | Longest run of characters not in `s` |
+| `BREAKX(s)` | Like BREAK but resumes on backtrack |
+| `ARB` | Any string (shortest to longest on backtrack) |
+| `ARBNO(p)` | Zero or more repetitions of pattern `p` |
+| `BAL` | Balanced parentheses |
+| `LEN(n)` | Exactly `n` characters |
+| `POS(n)` | Cursor at position `n` from left |
+| `RPOS(n)` | Cursor at position `n` from right |
+| `TAB(n)` | Advance cursor to position `n` |
+| `RTAB(n)` | Advance cursor to position `n` from right |
+| `REM` | Remainder of subject |
+| `FENCE` | Prevent backtracking past this point |
+| `FENCE(p)` | Match `p` without backtracking |
+| `ABORT` | Immediately fail the entire match |
+| `FAIL` | Always fail (force backtracking) |
+| `SUCCEED` | Always succeed (loop until exhausted) |
+| `DEFERRED(fn)` | Recursive patterns via lambda |
 
-### Environment variable
+Composition operators:
 
-```bash
-# Force pure-Python (always available, useful for debugging):
-SNOBOL4_BACKEND=pure python3 my_script.py
+| Operator | Meaning |
+|----------|---------|
+| `p1 + p2` | Sequential: p1 then p2 |
+| `p1 \| p2` | Alternation: try p1, then p2 |
+| `p $ var` | Immediate assign: capture on each match |
+| `p . var` | Conditional assign: capture on final success |
+| `p @ n` | Cursor capture: record cursor position |
 
-# Force C backend (ImportError if sno4py not installed):
-SNOBOL4_BACKEND=c python3 my_script.py
-```
+---
 
-### Runtime switching
+## Dual Backend
+
+snobol4python ships with two backends. The correct one is selected automatically.
+
+**C extension backend** (default when available) — wraps Phil Budne's SPIPAT engine, the pattern matching core from CSNOBOL4 2.3.3. Compiled C code with zero Python overhead on the hot path. **7–11× faster** than the pure-Python backend for complex patterns.
+
+**Pure-Python backend** (fallback) — a complete Python implementation of the Byrd Box engine. No compilation required. Runs anywhere Python runs. Correct on all test cases.
 
 ```python
-import SNOBOL4python as S4
-
-print(S4.current_backend())   # 'c' or 'pure'
-print(S4.C_AVAILABLE)         # True if sno4py extension is present
-
-S4.use_pure()                 # switch to pure-Python
-S4.use_c()                    # switch back to C (raises ImportError if unavailable)
-
-# After switching, call GLOBALS() again so the new backend
-# sees the caller's variable namespace:
-S4.GLOBALS(globals())
+from snobol4 import backend
+print(backend)  # → "c_extension" or "pure_python"
 ```
 
-> **Note:** Patterns are compiled at construction time by whichever backend
-> is active.  Do not mix pattern objects from different backends in the same
-> expression; rebuild patterns after switching.
-
 ---
 
-## Installing the C/SPIPAT Backend
+## Shift-Reduce Parser Stack
 
-The `sno4py` extension is built from source alongside the `sno4py_stage8`
-directory that is distributed separately (or built from the repository).
-
-```bash
-cd sno4py
-make                    # produces sno4py.<platform>.so
-# then place or symlink it somewhere on sys.path, or into site-packages
-```
-
-Requirements: Python 3.10+, GCC (or compatible C compiler), `python3-dev`.
-
----
-
-## Pattern Reference
-
-| Constructor | SNOBOL4 equivalent | Description |
-|-------------|-------------------|-------------|
-| `ε()` | null | Matches empty string |
-| `σ(s)` | `'s'` | Literal string |
-| `FAIL()` | `FAIL` | Always fails |
-| `ABORT()` | `ABORT` | Aborts entire match |
-| `SUCCEED()` | `SUCCEED` | Always succeeds (infinite) |
-| `P + Q` | `P Q` | Concatenation |
-| `P \| Q` | `P \| Q` | Alternation |
-| `~P` / `π(P)` | `P \| ''` | Optional |
-| `P @ 'name'` | `P $ N` | Immediate assignment |
-| `P % 'name'` | `P . N` | Conditional assignment |
-| `Σ(P, Q, …)` | `P Q …` | Multi-way concatenation |
-| `Π(P, Q, …)` | `P \| Q \| …` | Multi-way alternation |
-| `P & Q` / `ρ(P, Q)` | — | Conjunction (same span) |
-| `ANY(chars)` | `ANY(s)` | One char from set |
-| `NOTANY(chars)` | `NOTANY(s)` | One char not in set |
-| `SPAN(chars)` | `SPAN(s)` | One or more chars from set |
-| `BREAK(chars)` | `BREAK(s)` | Up to (not incl.) char in set |
-| `BREAKX(chars)` | `BREAKX(s)` | Like BREAK, resumes after break char |
-| `NSPAN(chars)` | — | Zero or more chars (possessive) |
-| `ARB()` | `ARB` | Any string (shortest first) |
-| `ARBNO(P)` | `ARBNO(P)` | Zero or more repetitions of P |
-| `BAL()` | `BAL` | Balanced parentheses |
-| `REM()` | `REM` | Remainder of subject |
-| `FENCE()` | `FENCE` | Commit point (abort on backtrack) |
-| `FENCE(P)` | `FENCE(P)` | Protected region |
-| `POS(n)` | `POS(n)` | Cursor at position n from left |
-| `RPOS(n)` | `RPOS(n)` | Cursor at position n from right |
-| `LEN(n)` | `LEN(n)` | Match exactly n chars |
-| `TAB(n)` | `TAB(n)` | Advance cursor to position n |
-| `RTAB(n)` | `RTAB(n)` | Advance cursor to position n from right |
-| `ζ(name_or_callable)` | `*name` | Deferred pattern reference |
-| `Λ(expr_or_fn)` | `*expr` | Immediate predicate / eval |
-| `λ(stmt_or_fn)` | — | Conditional action |
-| `Θ(name)` | — | Immediate cursor assignment |
-| `θ(name)` | — | Conditional cursor assignment |
-| `Φ(regex)` | — | Regex match (immediate group capture) |
-| `φ(regex)` | — | Regex match (conditional group capture) |
-| `α()` | — | BOL anchor |
-| `ω()` | — | EOL anchor |
-
-### Shift-reduce parser stack (Stage 8)
-
-| Constructor | Description |
-|-------------|-------------|
-| `nPush()` | Push 0 onto integer counter stack |
-| `nInc()` | Increment top of integer counter stack |
-| `nPop()` | Pop integer counter stack |
-| `Shift(tag[, expr])` | Push node onto parse-tree value stack |
-| `Reduce(tag[, n])` | Pop n nodes, wrap as [tag, …], push back |
-| `Pop(var)` | Pop top of value stack into globals[var] |
-
----
-
-## Match Functions
+snobol4python includes a shift-reduce parse-tree construction mechanism that runs *inside* the pattern match. Instead of extracting strings and parsing them separately, you build your grammar as SNOBOL4 patterns and accumulate parse tree nodes during the match itself.
 
 ```python
-SEARCH(S, P)        # → slice or None   (search anywhere in S)
-MATCH(S, P)         # → slice or None   (anchored at start)
-FULLMATCH(S, P)     # → slice or None   (anchored at both ends)
+from snobol4.parser import shift, reduce, get_tree
 
-# Operators:
-subject in pattern          # → bool
-pattern == subject          # → slice (raises F on failure)
+# shift(p, tag) — match p and push (tag, matched_text) onto the stack
+# reduce(tag, n) — pop n items, emit a tree node tagged with tag
+
+expr = shift(integer, "NUM") + ARBNO(
+    shift(ANY("+-"), "OP") + shift(integer, "NUM") + reduce("BINOP", 3)
+)
+match("1+2+3", expr)
+tree = get_tree()
+# → ("BINOP", ("BINOP", ("NUM","1"), ("+"), ("NUM","2")), ("+"), ("NUM","3"))
 ```
 
----
-
-## Version History
-
-| Version | Notes |
-|---------|-------|
-| **0.5.0** | Dual backend: C/SPIPAT (default, 7–11× faster) + pure-Python. `NSPAN` added. `use_c()` / `use_pure()` / `current_backend()` / `C_AVAILABLE`. |
-| 0.4.x | Pure-Python generator engine. Stage 8: shift-reduce parser stack. |
+This is the mechanism used to build the Penn Treebank parser and the CLAWS5 NLP corpus parser in snobol4csharp — ported from C# back to Python with the same interface.
 
 ---
 
-## Credits
+## snobol4artifact — The C Extension
 
-- **SNOBOL4python** — Lon Jones Cherryholmes
-- **SPIPAT / sno4py C engine** — Phil Budne
-- Pattern semantics based on *The SNOBOL4 Programming Language* (Griswold, Poage, Polonsky) and the SPITBOL manual.
+[snobol4artifact](https://github.com/snobol4ever/snobol4artifact) is the CPython C extension that powers the fast backend. It runs snobol4python pattern trees through a full Byrd Box engine in C — the direct ancestor of `engine.c` in snobol4x.
+
+```bash
+pip install snobol4artifact  # installs the C extension separately if needed
+```
+
+**70+ tests / 0 failures.** The extension is tested independently against the pure-Python backend — every result must match exactly.
+
+The architecture: snobol4python builds a pattern tree (Python objects). snobol4artifact walks that tree through the four-port Byrd Box engine in C: α (proceed), β (recede), γ (succeed), ω (concede). When the C extension is installed, snobol4python delegates the match call to it transparently.
+
+---
+
+## What You Can Build
+
+The shift-reduce stack and recursive patterns together make snobol4python a complete parsing toolkit:
+
+**Recursive grammars** — Any context-free grammar expressible as SNOBOL4 patterns. Mutual recursion between patterns via `DEFERRED`. No yacc. No lex. No separate grammar formalism.
+
+**Context-sensitive grammars** — Patterns that inspect state accumulated during earlier parts of the match. Things PCRE and PEG parsers cannot express.
+
+**NLP pipelines** — CLAWS5 part-of-speech tagging corpus parsing, Penn Treebank parenthesized-tree extraction, and Porter Stemmer validation (23,531-word corpus) are all tested in snobol4csharp using the same pattern vocabulary.
+
+**SNOBOL4 source parsing** — The pattern vocabulary is expressive enough to parse SNOBOL4 source code itself. This is tested in snobol4csharp's `Tests_Snobol4Parser` suite and is the basis for the `beauty.sno` port.
+
+---
+
+## Version
+
+**v0.5.0** — stable, on PyPI.
+
+---
+
+## Relationship to snobol4ever
+
+snobol4python is the Python library arm of the [snobol4ever](https://github.com/snobol4ever) project. The full SNOBOL4/SPITBOL *language* (not just pattern matching) is available on the JVM via [snobol4jvm](https://github.com/snobol4ever/snobol4jvm) and on .NET via [snobol4dotnet](https://github.com/snobol4ever/snobol4dotnet). The native compiler targeting x86-64 ASM, JVM bytecode, and .NET MSIL simultaneously is [snobol4x](https://github.com/snobol4ever/snobol4x).
+
+---
 
 ## License
 
-GPL-3.0-or-later
+LGPL v3. See [LICENSE](LICENSE).
+
+---
+
+## Acknowledgments
+
+**Ralph Griswold, Ivan Polonsky, David Farber** — SNOBOL4, Bell Labs, 1962–1967.
+
+**Phil Budne** — CSNOBOL4 and the SPIPAT engine that powers the C extension backend.
+
+**Lon Jones Cherryholmes** — architecture and snobol4python author.
+
+---
+
+*snobol4all. snobol4now. snobol4ever.*
